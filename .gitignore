@@ -86,4 +86,11 @@ build/
 .jekyll-metadata
 .sass-cache/
 Gemfile.lock
+
+*.svg
+*.jpg
+*.png
+*.prof
+*.csv
+*.npz
 _site/

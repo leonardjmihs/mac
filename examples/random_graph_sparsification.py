@@ -22,9 +22,9 @@ costs_rounded_rie= []
 num_candidates_list = []
 num_total_list = []
 
-for n in np.logspace(1.5, 2.5, 20).astype(int):
+# for n in np.logspace(1.5, 2.5, 20).astype(int):
 # for n in np.logspace(2, 2, 1).astype(int):
-# for n in [20]:
+for n in [20]:
     p = 0.6
     G = nx.erdos_renyi_graph(n, p,seed=seed)
     seed +=1
@@ -113,16 +113,19 @@ for n in np.logspace(1.5, 2.5, 20).astype(int):
     costs_rounded_rie.append(cost_rie_rounded)
 
 import pandas as pd
-# rie_log = mac.optimizer._log
-# rie_costs = -1*np.array(rie_log['iterations']['cost'])
-# rie_iterations = rie_log['iterations']['iteration']
+rie_log = mac.optimizer._log
+rie_costs = -1*np.array(rie_log['iterations']['cost'])
+rie_iterations = rie_log['iterations']['iteration']
 
-# mac_log = mac.mac_log
-# mac_costs = mac_log['iterations']['cost']
-# mac_iterations = mac_log['iterations']['iteration']
-# plt.plot(rie_iterations, rie_costs, label="Riemannian")
-# plt.plot(mac_iterations, mac_costs, label="MAC")
-# plt.show()
+mac_log = mac.mac_log
+mac_costs = mac_log['iterations']['cost']
+mac_iterations = mac_log['iterations']['iteration']
+plt.plot(rie_iterations, rie_costs, label="Riemannian")
+plt.plot(mac_iterations, mac_costs, label="MAC")
+plt.legend()
+plt.show()
+breakpoint()
+
 # write np array to npz
 np.savez("graph_sparse_data_2.npz", mac_times=mac_times, rie_times=rie_times,
          costs_unrounded_mac=costs_unrounded_mac, costs_unrounded_rie=costs_unrounded_rie,
@@ -147,14 +150,22 @@ np.savez("graph_sparse_data_2.npz", mac_times=mac_times, rie_times=rie_times,
 # df.to_csv("graph_sparse_time.csv")
 
 # plot the mac times and rie_times against the num_total_list
+plt.figure()
 plt.plot(num_total_list, mac_times, label="MAC")
 plt.plot(num_total_list, rie_times, label="Riemannian")
 plt.xlabel("Num Total Edges")
 plt.ylabel("Time (s)")
 plt.legend()
-plt.show()
+
+plt.figure()
+plt.plot(num_total_list, mac_times, label="MAC")
+plt.plot(num_total_list, rie_times, label="Riemannian")
+plt.xlabel("Num Total Edges")
+plt.ylabel("Time (s)")
+plt.legend()
 
 # plot the costs_unrounded_mac and costs_unrounded_rie against the num_total_list
+plt.figure()
 plt.plot(num_total_list, costs_unrounded_mac, label="MAC Unrounded")
 plt.plot(num_total_list, costs_unrounded_rie, label="Riemannian Unrounded")
 plt.xlabel("Num Total Edges")

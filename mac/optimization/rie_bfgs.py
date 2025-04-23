@@ -4,8 +4,8 @@ from pymanopt.optimizers.optimizer import Optimizer, OptimizerResult
 from pymanopt.tools import printer
 
 def naive_stepsize(k):
-    # return 2.0 / (k + 2.0)
-    return 0.1
+    return 2.0 / (k + 2.0)
+    # return 0.1
 
 class rlbfgs(Optimizer):
 

@@ -78,7 +78,7 @@ class MAC:
         # self.optimizer = pymanopt.optimizers.ConjugateGradient(verbosity=2, max_iterations=100, min_step_size=1e-3)
         # self.optimizer = pymanopt.optimizers.SteepestDescent(verbosity=2, max_iterations=100, min_step_size=1e-3)
         # self.optimizer = SteepestDescent(verbosity=2, max_iterations=100, min_step_size=1e-6)
-        self.optimizer = rlbfgs(verbosity=2, max_iterations=100, min_step_size=1e-6, log_verbosity=2)
+        self.optimizer = rlbfgs(verbosity=2, max_iterations=100, min_step_size=1e-6, log_verbosity=2, memory=1)
 
         self.prob_run_info = {'runtimes':[], 'calls': 0, 'num_idx':[], 'lap_rt':[], 'weight_graph_count':0, 'wgle_rt':[]}
         self.prob_rie_run_info = {'runtimes':[], 'calls': 0, 'num_idx':[], 'lap_rt':[],'weight_graph_count':0, 'wgle_rt':[]}
