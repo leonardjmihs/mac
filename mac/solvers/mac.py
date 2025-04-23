@@ -12,6 +12,11 @@ from mac.utils.rounding import *
 import mac.utils.fiedler as fiedler
 import mac.optimization.frankwolfe as fw
 import mac.optimization.constraints as constraints
+from mac.optimization.BudgetKManifold import BudgetKManifold
+from mac.optimization.rie_gd import SteepestDescent
+from mac.optimization.rie_bfgs import rlbfgs
+
+import pymanopt
 
 class MAC:
     @dataclass
@@ -70,8 +75,17 @@ class MAC:
 
         # Truncate edges with selection weights below this threshold
         self.min_selection_weight_tol = min_selection_weight_tol
+        # self.optimizer = pymanopt.optimizers.ConjugateGradient(verbosity=2, max_iterations=100, min_step_size=1e-3)
+        # self.optimizer = pymanopt.optimizers.SteepestDescent(verbosity=2, max_iterations=100, min_step_size=1e-3)
+        # self.optimizer = SteepestDescent(verbosity=2, max_iterations=100, min_step_size=1e-6)
+        self.optimizer = rlbfgs(verbosity=2, max_iterations=100, min_step_size=1e-6, log_verbosity=2)
 
-    def laplacian(self, x):
+        self.prob_run_info = {'runtimes':[], 'calls': 0, 'num_idx':[], 'lap_rt':[], 'weight_graph_count':0, 'wgle_rt':[]}
+        self.prob_rie_run_info = {'runtimes':[], 'calls': 0, 'num_idx':[], 'lap_rt':[],'weight_graph_count':0, 'wgle_rt':[]}
+
+        self.mac_log = {"iterations": {"iteration": [], "time": [], "point": [], "cost": [], "gradient_norm": []}}
+
+    def laplacian(self, x, solver='fw'):
         """Construct the combined Laplacian (fixed edges plus candidate edges weighted by x).
         x: An element of [0,1]^m; this is the edge selection to use
 
@@ -82,10 +96,22 @@ class MAC:
 
         returns the matrix L(x)
         """
+        start = timer()
         idx = np.where(x > self.min_selection_weight_tol)
         prod = x[idx]*self.weights[idx]
+        start2 = timer()
         L_candidate = weight_graph_lap_from_edges(self.edge_list[idx], prod, self.num_nodes)
+        end2 = timer()
         L_x = self.L_fixed + L_candidate
+        end = timer()
+        if solver == 'fw':
+            self.prob_run_info['lap_rt'].append(end - start)
+            self.prob_run_info['num_idx'].append(len(idx[0]))
+            self.prob_run_info['wgle_rt'].append(end2-start2)
+        else:
+            self.prob_rie_run_info['lap_rt'].append(end - start)
+            self.prob_rie_run_info['num_idx'].append(len(idx[0]))
+            self.prob_rie_run_info['wgle_rt'].append(end2-start2)
         return L_x
 
     def evaluate_objective(self, x):
@@ -111,8 +137,39 @@ class MAC:
 
         returns x, grad F(x).
         """
+        start = timer()
         Q = None if cache is None else cache.Q
-        f, fiedler_vec, Qnew = fiedler.find_fiedler_pair(L=self.laplacian(x), X=Q)
+        f, fiedler_vec, Qnew = fiedler.find_fiedler_pair(L=self.laplacian(x,solver='fw'), X=Q)
+        gradf = np.zeros(len(self.weights))
+        for k in range(len(self.weights)):
+            edge = self.edge_list[k] # get edge (i,j)
+            v_i = fiedler_vec[edge[0]]
+            v_j = fiedler_vec[edge[1]]
+            weight_k = self.weights[k]
+            kdelta = weight_k * (v_i - v_j)
+            gradf[k] = kdelta * (v_i - v_j)
+
+        if cache is not None:
+            cache.Q = Q
+
+        end = timer()
+        self.prob_run_info['calls'] += 1
+        self.prob_run_info['runtimes'].append(end - start)
+        return f, gradf
+
+    def problem_rie(self, x, cache=None):
+        """Compute the algebraic connectivity of L(x) and a (super)gradient of the
+        algebraic connectivity with respect to x.
+
+        x: Weights for each candidate edge (does not include fixed edges)
+        cache: Mutable `Cache` object. If a `Cache` object is provided in the `cache` field, it will be used
+        and updated, but not explicitly returned. Rather, it will be updated directly.
+
+        returns x, grad F(x).
+        """
+        start = timer()
+        Q = None if cache is None else cache.Q
+        f, fiedler_vec, Qnew = fiedler.find_fiedler_pair(L=self.laplacian(x, solver='rie'), X=Q)
 
         gradf = np.zeros(len(self.weights))
         for k in range(len(self.weights)):
@@ -125,7 +182,12 @@ class MAC:
 
         if cache is not None:
             cache.Q = Q
-        return f, gradf
+
+        end = timer()
+        self.prob_rie_run_info['calls'] += 1
+        self.prob_rie_run_info['runtimes'].append(end - start)
+        return -f, -gradf
+        # return f, gradf
 
     def solve(self, k, x_init=None, rounding="nearest", fallback=False,
               max_iters=5, relative_duality_gap_tol=1e-4,
@@ -187,8 +249,8 @@ class MAC:
 
         # Set up problem to use cache (or not)
         cache = None
-        if use_cache:
-            cache = MAC.Cache()
+        # if use_cache:
+        #     cache = MAC.Cache()
         problem = lambda x: self.problem(x, cache=cache)
 
         # Run Frank-Wolfe to solve the relaxation of subset constrained
@@ -197,7 +259,107 @@ class MAC:
                                 solve_lp=solve_lp, maxiter=max_iters,
                                 relative_duality_gap_tol=relative_duality_gap_tol,
                                 grad_norm_tol=grad_norm_tol,
-                                verbose=verbose)
+                                verbose=verbose, log=self.mac_log)
+
+        start = timer()
+        if rounding == "madow":
+            rounded = round_madow(w, k, value_fn=self.evaluate_objective, max_iters=random_rounding_max_iters)
+        else:
+            # rounding == "nearest"
+            rounded = round_nearest(w, k, weights=self.weights, break_ties_decimal_tol=10)
+        end = timer()
+        rounding_time = end - start
+
+        if fallback:
+            init_f = self.evaluate_objective(x_init)
+            rounded_f = self.evaluate_objective(rounded)
+
+            # If the rounded solution is worse than the initial solution, then
+            # return the initial solution instead.
+            if rounded_f < init_f:
+                rounded = w_init
+
+        # Return the rounded solution along with the unrounded solution and
+        # dual upper bound
+        if return_rounding_time:
+            return rounded, w, u, rounding_time
+
+        return rounded, w, u
+
+    def solve_rie(self, k, x_init=None, rounding="nearest", fallback=False,
+              max_iters=5, relative_duality_gap_tol=1e-4,
+              grad_norm_tol=1e-8, random_rounding_max_iters=1,
+              verbose=False, return_rounding_time=False, use_cache=False):
+        """Use the Frank-Wolfe method to solve the subset selection problem,.
+
+        Parameters
+        ----------
+        k : int
+            Number of edges to select.
+        x_init : optional, array-like
+            Initial weights for the candidate edges, must satisfy 0 <= w_i <= 1, |w| <= k. This
+            is the starting point for the Frank-Wolfe algorithm. TODO(kevin): make optional
+        rounding : str, optional
+            Rounding method to use. Options are "nearest" (default) and "madow"
+            (a random rounding procedure).
+        fallback : bool, optional
+            If True, fall back to the initialization if the rounded solution is worse.
+        max_iters: int, optional
+            Maximum number of iterations for the Frank-Wolfe algorithm.
+        relative_duality_gap_tol: float, optional
+            Tolerance for the relative duality gap, expressed as a fraction of
+            the function value. That is, if (upper - f)/f <
+            relative_duality_gap_tol, where "upper" is an upper bound on the
+            optimal value of 'f', the algorithm terminates.
+        grad_norm_tol: float, optional
+            Tolerance for the norm of the gradient. If the norm of the gradient
+            is less than this value, then the algorithm terminates.
+        random_rounding_max_iters: int, optional
+            Maximum number of iterations for the random rounding procedure.
+            This is only used if rounding="madow". If this is larger than 1,
+            then we will randomly round multiple times and return the best
+            solution (in terms of algebraic connectivity).
+        verbose: bool, optional
+            If True, print out information about the progress of the algorithm.
+
+        returns a tuple (solution, unrounded, upper_bound) where
+        solution: the (rounded) solution w \in {0,1}^m |w| = k
+        unrounded: the solution obtained prior to rounding
+        upper_bound: the value of the dual at the last iteration
+
+        """
+
+        if k >= len(self.weights):
+            # If the budget is larger than the number of candidate edges, then
+            # keep them all.
+            result = np.ones(len(self.weights))
+            if return_rounding_time:
+                return result, result, self.evaluate_objective(np.ones(len(self.weights))), 0.0
+
+            return result, result, self.evaluate_objective(np.ones(len(self.weights)))
+
+        # TODO handle case where x is none
+        assert(len(x_init) == len(self.weights))
+
+        manifold = BudgetKManifold(len(self.weights), k, eps_tol=1e-6)
+
+        # cost = pymanopt.function.jax(manifold)(lambda x: -self.problem(x)[0])
+        # gradF = pymanopt.function.jax(manifold)(lambda x: -self.problem(x)[1])
+        # problem = pymanopt.Problem(manifold, cost, euclidean_gradient=gradF)
+        
+        problem = lambda x: self.problem_rie(x, cache=None)
+
+        # problem = lambda x: self.problem(x, cache=None)
+        x_init = manifold.center_pt()
+        # x_init = manifold.project_to_feasible_set(x_init)
+        # Run Riemannian Conjugate Gradient to solve the relaxation of subset constrained
+        # algebraic connectivity maximization
+        # breakpoint()
+        result = self.optimizer.run(manifold, problem, initial_point=x_init)
+        w = result.point
+        u =  result.cost
+        # breakpoint()
+
 
         start = timer()
         if rounding == "madow":

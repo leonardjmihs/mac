@@ -15,7 +15,9 @@ plt.rcParams['text.usetex'] = True
 plt.rcParams.update({'font.size': 16})
 
 # SE-Sync setup
-sesync_lib_path = "/Users/kevin/repos/SESync/C++/build/lib"
+# sesync_lib_path = "/Users/kevin/repos/SESync/C++/build/lib"
+sesync_lib_path = "/home/jungle/Git/SE-Sync/C++/build/lib"
+sesync_lib_path = "/home/jungle/.local/lib/python3.10/site-packages/PySESync.cpython-310-x86_64-linux-gnu.so"
 sys.path.insert(0, sesync_lib_path)
 
 import PySESync
@@ -292,13 +294,22 @@ if __name__ == '__main__':
     upper_bounds = []
     times = []
 
+
+    results_rie = []
+    unrounded_results_rie = []
+    upper_bounds_rie = []
+    times_rie = []
+
     madow_results = []
     madow_times = []
+
+    madow_results_rie = []
+    madow_times_rie = []
 
     # Container for GreedyEig results
     greedy_eig_results = []
     greedy_eig_times = []
-
+    
     # Container for GreedyESP results
     greedy_esp_results = []
     greedy_esp_times = []
@@ -324,6 +335,7 @@ if __name__ == '__main__':
         upper_bounds.append(upper)
         unrounded_results.append(unrounded)
 
+
         start = timer()
         madow_rounded = round_madow(unrounded, num_lc, seed=np.random.RandomState(42))
         end = timer()
@@ -334,6 +346,26 @@ if __name__ == '__main__':
         # in the rounding procedure, we don't need to re-compute the interior
         # point solution every time.
         madow_times.append(solve_time + (end - start) - rtime)
+
+        start_r = timer()
+        result_rie, unrounded_rie, upper_rie, rtime_rie = mac.solve_rie(num_lc, w_init, max_iters=20, rounding="nearest", return_rounding_time=True, use_cache=True)
+        end_r = timer()
+        solve_time_rie = end_r-start_r
+        times_rie.append(solve_time_rie)
+        results_rie.append(result_rie)
+        upper_bounds_rie.append(upper_rie)
+        unrounded_results_rie.append(unrounded_rie)
+        start = timer()
+        madow_rounded_rie = round_madow(unrounded_rie, num_lc, seed=np.random.RandomState(42))
+        end = timer()
+        madow_results_rie.append(madow_rounded_rie)
+        # Time for Madow rounded solution is total MAC time (including nearest
+        # neighbor rounding) plus the time to perform Madow rounding, minus the
+        # nearest neighbor rounding time. Because Madow and nearest differ only
+        # in the rounding procedure, we don't need to re-compute the interior
+        # point solution every time.
+        madow_times_rie.append(solve_time_rie + (end - start) - rtime_rie)
+    breakpoint()
 
     # Solve the greedy k-edge selection problem
     if run_greedy:
@@ -353,6 +385,7 @@ if __name__ == '__main__':
             print(f"Greedy ESP AC at {pct_lc * 100.0} % loop closures: {mac.evaluate_objective(greedy_esp_results[i])}")
             pass
         pass
+
 
     #############################
     # Plot the Results
@@ -412,6 +445,58 @@ if __name__ == '__main__':
     plt.savefig(f"comp_time_{dataset_name}_300.png", dpi=300, bbox_inches='tight')
     plt.savefig(f"comp_time_{dataset_name}.svg", transparent=True, bbox_inches='tight')
     # plt.show()
+
+    #############################
+    # Plot the Results (Riemannian)
+    #############################
+
+
+    colors = {"MAC Nearest (Ours)": "C0",
+              "MAC Madow (Ours)": "C4",
+              "Unrounded": "C2",
+              "Dual Upper Bound": "C0",
+              "Greedy ESP": "C1",
+              "Naive Method": "C3"}
+    plt.figure()
+    # plot connectivity vs. percent_lc
+    our_objective_vals_rie = [mac.evaluate_objective(result) for result in results_rie]
+    # naive_objective_vals = [mac.evaluate_objective(naive_result) for naive_result in naive_results_rie]
+    unrounded_objective_vals_rie = [mac.evaluate_objective(unrounded) for unrounded in unrounded_results_rie]
+    madow_objective_vals_rie = [mac.evaluate_objective(madow) for madow in madow_results_rie]
+
+    plt.plot(100.0*np.array(percent_lc), our_objective_vals_rie, label='MAC Nearest Rie (Ours)', marker='s', color=colors["MAC Nearest (Ours)"])
+    plt.plot(100.0*np.array(percent_lc), madow_objective_vals_rie, label='MAC Madow Rie (Ours)', marker='o', color=colors["MAC Madow (Ours)"])
+
+    plt.plot(100.0*np.array(percent_lc), upper_bounds_rie, label='Dual Upper Bound Rie', linestyle='--', color=colors["Dual Upper Bound"])
+    plt.fill_between(100.0*np.array(percent_lc), our_objective_vals_rie, upper_bounds_rie, alpha=0.1)
+    plt.fill_between(100.0*np.array(percent_lc), madow_objective_vals_rie, upper_bounds_rie, alpha=0.1, color='C4')
+
+    plt.plot(100.0*np.array(percent_lc), unrounded_objective_vals_rie, label='Unrounded Rie', color=colors["Unrounded"])
+
+    # if run_greedy:
+    #     plt.plot(100.0*np.array(percent_lc), greedy_esp_objective_vals, label='Greedy ESP', marker='o', color=colors["Greedy ESP"])
+    #     pass
+    # plt.plot(100.0*np.array(percent_lc), naive_objective_vals, label='Naive Method', marker='o', color=colors["Naive Method"])
+
+    plt.ylabel(r'Algebraic Connectivity $\lambda_2$')
+    plt.xlabel(r'\% Edges Added')
+    plt.legend()
+    plt.savefig(f"alg_conn_{dataset_name}_riemannian.png", dpi=600, bbox_inches='tight')
+    # plt.show()
+
+    # Plot computation time vs. percent_lc
+    plt.figure()
+    plt.semilogy(100.0*np.array(percent_lc[:-1]), times_rie[:-1], label='MAC Nearest Rie (Ours)', marker='s', color=colors["MAC Nearest (Ours)"])
+    plt.semilogy(100.0*np.array(percent_lc[:-1]), madow_times_rie[:-1], label='MAC Madow Rie (Ours)', marker='o', color=colors["MAC Madow (Ours)"])
+    if run_greedy:
+        # plt.plot(100.0*np.array(percent_lc), greedy_eig_times, label='Greedy E-Opt', color='orange')
+        plt.semilogy(100.0*np.array(percent_lc[:-1]), greedy_esp_times[:-1], label='Greedy ESP', marker='o', color=colors["Greedy ESP"])
+    plt.xlim([0.0, 100.0])
+    plt.ylabel(r'Time (s)')
+    plt.xlabel(r'\% Edges Added')
+    plt.legend()
+    plt.savefig(f"comp_time_{dataset_name}_riemannian.png", dpi=600, bbox_inches='tight')
+    plt.show()
 
     #############################
     # Run SE-Sync

@@ -14,7 +14,8 @@ def frank_wolfe(initial,
                 maxiter=50,
                 relative_duality_gap_tol=1e-5,
                 grad_norm_tol=1e-10,
-                verbose=False):
+                verbose=False,
+                log={"iterations": {"iteration": [], "time": [], "point": [], "cost": [], "gradient_norm": []}}):
     """Frank-Wolfe algorithm for maximizing a concave function.
 
     Parameters
@@ -53,6 +54,10 @@ def frank_wolfe(initial,
     for i in range(maxiter):
         # Compute objective value and a (super)-gradient.
         f, gradf = problem(x)
+        log["iterations"]["iteration"].append(i)
+        log["iterations"]["point"].append(x)
+        log["iterations"]["cost"].append(f)
+        log["iterations"]["gradient_norm"].append(gradf)
 
         # Solve the direction-finding subproblem by maximizing the linear
         # approximation of f at x over the feasible set.
