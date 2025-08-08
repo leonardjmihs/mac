@@ -45,6 +45,8 @@ w_init[random_selection] = 1.0
 print(w_init)
 
 result, unrounded, upper = mac.solve(num_candidates, w_init, max_iters=100, rounding="nearest")
+result_rie, unrounded_rie, upper_rie = mac.solve_rie(num_candidates, w_init, max_iters=100, rounding="madow", use_cache=False)
+
 greedy_eig_result, _ = greedy_eig.subset(num_candidates)
 greedy_esp_result, _ = greedy_esp.subset(num_candidates)
 
@@ -60,23 +62,32 @@ greedy_esp_selected_G = mac_to_nx(fixed_edges + greedy_esp_selected)
 selected = select_edges(candidate_edges, result)
 selected_G = mac_to_nx(fixed_edges + selected)
 
+selected_rie = select_edges(candidate_edges, result_rie)
+selected_rie_G = mac_to_nx(fixed_edges + selected_rie)
+
 print(f"lambda2 Random: {mac.evaluate_objective(w_init)}")
 print(f"lambda2 Ours: {mac.evaluate_objective(result)}")
 
-plt.subplot(151)
+plt.subplot(161)
 nx.draw(G, pos=pos)
 plt.title(rf"Original ($\lambda_2$ = {mac.evaluate_objective(np.ones(len(w_init))):.3f})")
-plt.subplot(152)
+plt.subplot(162)
 nx.draw(init_selected_G, pos=pos)
 plt.title(rf"Naive ($\lambda_2$ = {mac.evaluate_objective(w_init):.3f})")
-plt.subplot(153)
+plt.subplot(163)
 nx.draw(greedy_eig_selected_G, pos=pos)
 plt.title(rf"GreedyEig ($\lambda_2$ = {mac.evaluate_objective(greedy_eig_result):.3f})")
-plt.subplot(154)
+plt.subplot(164)
 nx.draw(greedy_esp_selected_G, pos=pos)
 plt.title(rf"GreedyESP ($\lambda_2$ = {mac.evaluate_objective(greedy_esp_result):.3f})")
-plt.subplot(155)
+
+plt.subplot(165)
+nx.draw(selected_G, pos=pos)
+plt.title(rf"MAC ($\lambda_2$ = {mac.evaluate_objective(result):.3f})")
+
+plt.subplot(166)
 nx.draw(selected_G, pos=pos)
 plt.title(rf"Ours ($\lambda_2$ = {mac.evaluate_objective(result):.3f})")
+
 plt.show()
 

@@ -14,6 +14,7 @@ def frank_wolfe(initial,
                 maxiter=50,
                 relative_duality_gap_tol=1e-5,
                 grad_norm_tol=1e-10,
+                min_relative_cost_reduction_tol=1e-5,
                 verbose=False,
                 log={"iterations": {"iteration": [], "time": [], "point": [], "cost": [], "gradient_norm": []}}):
     """Frank-Wolfe algorithm for maximizing a concave function.
@@ -51,6 +52,8 @@ def frank_wolfe(initial,
 
     x = initial
     u = float("inf")
+    old_f = np.inf
+
     for i in range(maxiter):
         # Compute objective value and a (super)-gradient.
         f, gradf = problem(x)
@@ -77,8 +80,15 @@ def frank_wolfe(initial,
             if verbose:
                 print("Duality gap tolerance reached, found optimal solution")
             return x, u
+        
+        # if abs((old_f-f) / old_f) < min_relative_cost_reduction_tol:
+        #     if verbose:
+        #         print("Relative cost reduction tolerance reached, found optimal solution")
+        #     return x, u
 
         x = x + stepsize(x, gradf, s, i) * (s - x)
+        old_f = f
+
     if verbose:
         print("Reached maximum number of iterations, returning best solution")
     return x, u

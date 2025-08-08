@@ -94,3 +94,4 @@ Gemfile.lock
 *.csv
 *.npz
 _site/
+*.pkl

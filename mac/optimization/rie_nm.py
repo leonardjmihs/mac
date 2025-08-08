@@ -7,11 +7,7 @@ from pymanopt.optimizers.optimizer import Optimizer, OptimizerResult
 from pymanopt.tools import printer
 from mac.optimization.line_search import *
 
-# def naive_stepsize(k):
-#     return 2.0 / (k + 2.0)
-#     # return 0.1 
-
-class SteepestDescent(Optimizer):
+class NesterovDescent(Optimizer):
     """Riemannian steepest descent algorithm.
 
     Perform optimization using gradient descent with line search.
@@ -23,7 +19,7 @@ class SteepestDescent(Optimizer):
         line_searcher: The line search method.
     """
 
-    def __init__(self, step_size_searcher=None, *args, **kwargs):
+    def __init__(self, momentum_searcher=None, step_size_searcher=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # if step_size is None:
@@ -31,10 +27,14 @@ class SteepestDescent(Optimizer):
         # else:
         #     self._step_size = step_size
         if step_size_searcher is None:
-            self._step_size_searcher=ConstantLineSearcher()
+            self._step_size_searcher=ConstantLineSearcher(0.5)
         else:
             self._step_size_searcher=step_size_searcher
-        self._log={'iterations':{"iteration":[],"time":[], "point":[], "cost":[],"gradient_norm":[]}}
+        
+        if momentum_searcher is None:
+            self._momentum_searcher=ConstantLineSearcher(0.5)
+        else:
+            self._momentum_searcher=momentum_searcher
 
     def reset_log(self):
         self._log={'iterations':{"iteration":[],"time":[], "point":[], "cost":[],"gradient_norm":[]}}
@@ -68,6 +68,7 @@ class SteepestDescent(Optimizer):
         # gradient = problem.riemannian_gradient
 
         step_size_searcher = self._step_size_searcher
+        momentum_searcher = self._momentum_searcher
 
         # If no starting point is specified, generate one at random.
         if initial_point is None:
@@ -84,6 +85,7 @@ class SteepestDescent(Optimizer):
                     ("Iteration", f"{iteration_format_length}d"),
                     ("Cost", "+.16e"),
                     ("Gradient norm", ".8e"),
+                    ("Step Size", ".8e"),
                 ]
             )
         else:
@@ -91,14 +93,16 @@ class SteepestDescent(Optimizer):
 
         column_printer.print_header()
 
-        # self._initialize_log(
-        #     optimizer_parameters={"step_size": step_size_searcher}
-        # )
+        self._initialize_log(
+            optimizer_parameters={"step_size": step_size_searcher}
+        )
 
         # Initialize iteration counter and timer
         iteration = 0
         start_time = time.time()
-
+        # velocity = manifold.zero_vector(x)
+        v = x
+        A = 0
         cost, egrad = problem(x)
         grad = manifold.euclidean_to_riemannian_gradient(x, egrad)
         gradient_norm = manifold.norm(x, grad)
@@ -109,41 +113,46 @@ class SteepestDescent(Optimizer):
             # Calculate new cost, grad and gradient_norm
             # cost = objective(x)
             # grad = gradient(x)
+            # momentum, _ = momentum_searcher.search(
+            #     problem, manifold, x, v, cost, -(gradient_norm**2) # Currently only fixed parameter momenutm is implemented
+            # )
+            momentum = iteration/(iteration+2)
+            # momentum = 0.5 
+            # y  = manifold.retraction(v, momentum*manifold.log(x,v))
+            y  = manifold.retraction(v, momentum*manifold.log(v,x))
 
-            column_printer.print_row([iteration, cost, gradient_norm])
+            next_cost, egrad = problem(y)
+            grad = manifold.euclidean_to_riemannian_gradient(x, egrad)
+            gradient_norm = manifold.norm(x, grad)
+
+            relative_cost_reduction = abs((next_cost-cost) / cost )
+
+            # velocity = manifold.retraction(x, self.momentum*(x-x_prev))
+
+            # Descent direction is minus the gradient
+            desc_dir = -grad
+
+
+            step_size, xNext = step_size_searcher.search(
+                problem, manifold, y, desc_dir, cost, -(gradient_norm**2), iter=iteration
+            )
+            a = np.max(np.roots(np.array([1, -step_size, -step_size*A])))
+            A = A + a
+            column_printer.print_row([iteration, cost, gradient_norm, momentum])
             self._add_log_entry(
                 iteration=iteration,
                 point=x,
                 cost=cost,
                 gradient_norm=gradient_norm,
+                step_size=momentum
             )
 
-            # Descent direction is minus the gradient
-            desc_dir = -grad
-
-            # alpha = step_size_searcher(x, iteration)
-            # norm_d = manifold.norm(x, desc_dir)
-            
-            # x = manifold.retraction(x, alpha*desc_dir)
-            # step_size = alpha * norm_d
-            step_size, x = step_size_searcher.search(
-                problem, manifold, x, desc_dir, cost, -(gradient_norm**2),iter=iteration
-            )
-
-            # Perform line-search
-            # step_size, x = line_searcher.search(
-            #     objective, manifold, x, desc_dir, cost, -(gradient_norm**2)
-            # )
-            next_cost, egrad = problem(np.array(x))
-            grad = manifold.euclidean_to_riemannian_gradient(x, egrad)
-            gradient_norm = manifold.norm(x, grad)
-
-            relative_cost_reduction = abs((next_cost-cost) / cost )
-            cost = next_cost
+            v = manifold.retraction(v, a*manifold.transport(y, v,desc_dir))
+            x = xNext 
 
             stopping_criterion = self._check_stopping_criterion(
                 start_time=start_time,
-                step_size=step_size,
+                step_size=momentum,
                 gradient_norm=gradient_norm,
                 iteration=iteration,
                 relative_cost_reduction=relative_cost_reduction
