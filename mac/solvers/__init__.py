@@ -1,2 +1,2 @@
-from .mac import MAC
+from .mac import MAC, MACH, MACHR
 from .baseline import NaiveGreedy

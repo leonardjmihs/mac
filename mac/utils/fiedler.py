@@ -37,9 +37,10 @@ def find_fiedler_pair(L, X=None, method='tracemin_lu', tol=1e-8, seed=None):
 
     if method == 'tracemin_cholesky':
         from mac.utils.cholesky import tracemin_fiedler_cholesky
-        sigma, X = tracemin_fiedler_cholesky(L=L, X=X, normalized=False, tol=tol)
+        sigma, X, average_time, iters, ratio = tracemin_fiedler_cholesky(L=L, X=X, normalized=False, tol=tol)
+        return (sigma[0], X[:, 0], X), (average_time, iters, ratio)
     else:
         sigma, X = la.algebraicconnectivity._tracemin_fiedler(L=L, X=X, normalized=False, tol=tol, method=method)
+        return (sigma[0], X[:, 0], X)
 
-    return (sigma[0], X[:, 0], X)
 

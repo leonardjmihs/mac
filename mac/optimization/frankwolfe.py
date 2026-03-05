@@ -61,6 +61,8 @@ def frank_wolfe(initial,
         log["iterations"]["point"].append(x)
         log["iterations"]["cost"].append(f)
         log["iterations"]["gradient_norm"].append(gradf)
+        if "dual" in log["iterations"]:
+            log["iterations"]["dual"].append(u)
 
         # Solve the direction-finding subproblem by maximizing the linear
         # approximation of f at x over the feasible set.

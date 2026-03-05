@@ -60,12 +60,13 @@ rie_fiedler_ratio = []
 # for n in [200, 201, 202, 203]:
 # for n in [300]:
 # for n in [30, 31, 32, 33]:
-for n in [30, 200]:
+# for n in [10,30, 200]:
+for n in [10]:
     randomizer_state = list(np.random.get_state())
     randomizer_state[1] = randomizer_state[1].tolist()
 
     p = 0.6
-    G = nx.erdos_renyi_graph(n, p,seed=seed)
+    G = nx.erdos_renyi_graph(n, p,seed=np.random)
     prob_def = {'randomizer_state': randomizer_state, "seed":seed, "n":n, "p":p}
     output_dict_list.append(prob_def)
     seed +=1
@@ -90,9 +91,9 @@ for n in [30, 200]:
     # Ensure G is connected before proceeding
     assert(nx.is_connected(G))
 
+
     fixed_edges = nx_to_mac(spanning_tree)
     candidate_edges = nx_to_mac(loop_graph)
-
     pct_candidates = 0.2
     num_candidates = int(pct_candidates * len(candidate_edges))
 
@@ -116,6 +117,7 @@ for n in [30, 200]:
     # fw_init = naive.subset(num_candidates)
 
     fw_init = rie_init
+    mac.evaluate_objective(fw_init)
     # rie_init = fw_init
 
 

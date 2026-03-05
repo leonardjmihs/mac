@@ -3,6 +3,7 @@ import numpy as np
 from mac.utils.graphs import *
 from scipy.sparse import csr_matrix, coo_matrix, csc_matrix
 from sksparse.cholmod import cholesky, Factor, analyze, cholesky_AAt, CholmodNotPositiveDefiniteError
+import time
 
 def update_cholesky_factorization_inplace(
         chol_factorization: Factor, edge_uv: Edge, num_nodes: int, reduced: bool, subtract: bool
@@ -173,7 +174,6 @@ def tracemin_fiedler_cholesky(L, X, normalized, tol):
     import scipy.sparse  # call as sp.sparse
 
     n = X.shape[0]
-
     if normalized:
         # Form the normalized Laplacian matrix and determine the eigenvector of
         # its nullspace.
@@ -211,13 +211,17 @@ def tracemin_fiedler_cholesky(L, X, normalized, tol):
     i = (A.indptr[1:] - A.indptr[:-1]).argmax()
     A[i, i] = float("inf")
     solver = _CholeskySolver(A)
+    # solver = _PCGSolver(lambda x: L @ x, lambda x: D * x)
 
     # Initialize.
     Lnorm = abs(L).sum(axis=1).flatten().max()
     project(X)
     W = np.ndarray(X.shape, order="F")
 
+    iter = 0
+    average_time = 0
     while True:
+        start = time.time()
         # Orthonormalize X.
         X = np.linalg.qr(X)[0]
         # Compute iteration matrix H.
@@ -236,8 +240,20 @@ def tracemin_fiedler_cholesky(L, X, normalized, tol):
         W[:, :] = solver.solve(X, tol)
         X = (sp.linalg.inv(W.T @ X) @ W.T).T  # Preserves Fortran storage order.
         project(X)
+        average_time += time.time() - start
+        iter+=1
 
-    return sigma, np.asarray(X)
+    average_time /= iter
+
+
+    # compute the ratio between the 2nd smallest eigenvalue and the largest
+    # eigenvalue of the Laplacian matrix and print
+    eigs = sp.linalg.eigvalsh(L.toarray())
+    min_val, max_val = eigs[1], eigs[-1]
+    ratio = max_val / min_val
+
+    # return sigma, np.asarray(X)
+    return sigma, np.asarray(X), average_time, iter, ratio
 
 
 def find_fiedler_pair_cholesky(L, x, normalized, tol, seed):
